@@ -26,6 +26,8 @@ wheels/
 MANIFEST
 
 # PyInstaller
+#  Usually these files are written by a python script from a template
+#  before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
 
@@ -103,32 +105,35 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
-# PyTorch
-*.pth
-*.pt
-*.ckpt
-
-# Training artifacts
+# YOLOv13 specific
 runs/
+*.pt
+*.weights
+*.onnx
+*.engine
+*.trt
+*.pb
+*.pkl
+*.bin
+
+# Training outputs
+results/
 wandb/
-lightning_logs/
-
-# Data directories
-data/
-datasets/
-training_data*/
-sample_data/
-test_data/
-
-# Result files
-*.jpg
 *.png
+*.jpg
 *.jpeg
 *.gif
-*.bmp
-*.tiff
-results/
-outputs/
+*.mp4
+*.avi
+*.mov
+
+# Dataset files
+datasets/
+data/
+*.zip
+*.tar.gz
+*.tar
+*.rar
 
 # IDE files
 .vscode/
@@ -146,11 +151,40 @@ outputs/
 ehthumbs.db
 Thumbs.db
 
-# Custom project files
-logs/
-cache/
+# Debug files
+debug/
 temp/
 tmp/
-*.yaml
-!yolov13/ultralytics/cfg/**/*.yaml
-!requirements.txt
+*.log
+*.out
+*.err
+
+# Backup files
+*.bak
+*.backup
+*.orig
+*.save
+
+# Cloud and deployment files
+*.pem
+*.key
+*.crt
+*.csr
+docker-compose.override.yml
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Model checkpoints and weights
+checkpoints/
+weights/
+*.pth
+*.h5
+*.hdf5
+*.model
+
+# Cache directories
+.cache/
+*.cache
+cache/

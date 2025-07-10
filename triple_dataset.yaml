@@ -1,0 +1,21 @@
+dataset_type: triple_yolo
+detail1_path: images/detail1
+detail2_path: images/detail2
+names:
+  0: person
+  1: bicycle
+  2: car
+  3: motorcycle
+  4: airplane
+  5: bus
+  6: train
+  7: truck
+  8: boat
+  9: traffic light
+nc: 10
+path: /Users/sompoteyouwai/env/yolo_3dual_input/training_data_demo
+task: detect
+test: ''
+train: images/primary/train
+triple_input: true
+val: images/primary/val
