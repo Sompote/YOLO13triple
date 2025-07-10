@@ -1,19 +1,23 @@
-# YOLOv13 Triple Input - Enhanced Object Detection
+# YOLOv13 Triple Input - Cloud-Ready Object Detection
 
 ![License](https://img.shields.io/badge/license-AGPL--3.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-1.9%2B-red)
 ![Status](https://img.shields.io/badge/status-Production%20Ready-green)
 ![Variants](https://img.shields.io/badge/variants-n%2Fs%2Fm%2Fl%2Fx-purple)
+![Cloud](https://img.shields.io/badge/cloud-ready-orange)
+![Docker](https://img.shields.io/badge/docker-supported-blue)
 
-A **production-ready** implementation of YOLOv13 with **triple image input** for enhanced object detection. Process 3 images simultaneously with attention-based fusion across **5 model variants** (nano to extra-large).
+A **cloud-ready** implementation of YOLOv13 with **triple image input** for enhanced object detection. **Deploy anywhere** with standalone execution - process 3 images simultaneously across **5 model variants** (nano to extra-large).
 
 ## 🌟 Key Features
 
-- ✅ **Triple Input Processing**: Process 3 images with attention-based fusion
-- ✅ **5 Model Variants**: YOLOv13n/s/m/l/x with different parameter scales  
-- ✅ **Production Ready**: Complete training and inference pipeline
-- ✅ **Memory Optimized**: Configurable batch sizes and model scaling
+- ☁️ **Cloud-Ready Deployment**: One-command setup for AWS, GCP, Azure, Colab
+- 🚀 **Standalone Execution**: Self-managing dependencies and environment setup  
+- 🔄 **Triple Input Processing**: Process 3 images with attention-based fusion
+- 📏 **5 Model Variants**: YOLOv13n/s/m/l/x with different parameter scales
+- 🐳 **Docker Support**: Container-based deployment for consistency
+- 🛠️ **Auto-Configuration**: Generates model configs if missing
 
 ## 🏗️ Architecture Overview
 
@@ -39,32 +43,62 @@ Input: [Primary Image, Detail Image 1, Detail Image 2]
 | **YOLOv13l** | ~45M | Maximum accuracy |
 | **YOLOv13x** | ~68M | Research, highest accuracy |
 
-## 🚀 Quick Start
+## ⚡ Quick Start (Cloud Deployment)
 
-### Installation
+### 🚀 **One-Command Cloud Setup**
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/yolo_3dual_input.git
-cd yolo_3dual_input
+# Clone and setup (works on ANY cloud platform)
+git clone https://github.com/Sompote/yolov13-triple-input.git
+cd yolov13-triple-input
+./cloud_setup.sh
 
-# Install dependencies
-pip install -r requirements.txt
+# Start training immediately
+python3 standalone_train.py --data working_dataset.yaml --model s --epochs 50 --batch 8 --device cpu
 ```
 
-### Basic Usage
-
-#### 1. **Training with Model Variants**
+### 🐳 **Docker Deployment (Recommended)**
 
 ```bash
-# Train with small variant using triple input dataset (recommended)
-python train_triple.py --data triple_dataset.yaml --model yolov13s --epochs 50 --batch 8 --device cpu
+# Build and run with Docker
+docker build -f Dockerfile.cloud -t yolov13-triple .
+docker run -v $(pwd)/runs:/workspace/runs yolov13-triple \
+    python3 standalone_train.py --data working_dataset.yaml --model s --epochs 50 --batch 8 --device cpu
+```
 
-# Train with nano variant (fastest) - ideal for testing triple input concept
-python train_triple.py --data triple_dataset.yaml --model yolov13n --epochs 100 --batch 16 --device cpu
+### 📱 **Platform-Specific Quick Start**
 
-# Train with medium variant (higher accuracy) - full triple input benefits
-python train_triple.py --data triple_dataset.yaml --model yolov13m --epochs 50 --batch 4 --device cpu
+#### Google Colab
+```python
+!git clone https://github.com/Sompote/yolov13-triple-input.git
+%cd yolov13-triple-input
+!./cloud_setup.sh
+!python3 standalone_train.py --data working_dataset.yaml --model s --epochs 50 --batch 16 --device 0
+```
+
+#### AWS/GCP/Azure
+```bash
+# On any cloud VM:
+git clone https://github.com/Sompote/yolov13-triple-input.git
+cd yolov13-triple-input
+./cloud_setup.sh
+python3 standalone_train.py --data working_dataset.yaml --model s --epochs 50 --batch 8 --device cpu
+```
+
+### 🛠️ **Training with Model Variants**
+
+```bash
+# Nano (fastest, 2.6M params) - ideal for testing
+python3 standalone_train.py --model n --epochs 100 --batch 32 --device cpu
+
+# Small (recommended, 9M params) - balanced performance  
+python3 standalone_train.py --model s --epochs 50 --batch 16 --device cpu
+
+# Medium (25M params) - higher accuracy
+python3 standalone_train.py --model m --epochs 50 --batch 8 --device cpu
+
+# Large (45M params) - maximum accuracy
+python3 standalone_train.py --model l --epochs 50 --batch 4 --device cpu
 ```
 
 #### 2. **Triple Input Inference**
@@ -295,44 +329,78 @@ python fix_and_train.py --train --epochs 3 --batch 1 --device cpu
 
 ```
 yolo_3dual_input/
-├── yolov13/                    # Core YOLOv13 implementation
-│   └── ultralytics/
-│       └── cfg/models/v13/     # Model variant configurations
-├── training_data_demo/         # Sample triple input dataset
-│   ├── images/
-│   │   ├── primary/           # Primary images with objects
-│   │   ├── detail1/           # First detail images
-│   │   ├── detail2/           # Second detail images
-│   │   ├── train/             # Simplified structure
-│   │   └── val/               # Simplified structure
-│   └── labels/                # YOLO format annotations
-├── runs/                       # Training outputs
-├── deployment_package/         # Standalone deployment
-├── train_triple.py            # Main training script
-├── fix_and_train.py           # Complete training pipeline
-├── triple_inference.py        # Triple input inference script
-├── detect_triple.py           # Detection script
-├── working_dataset.yaml       # Simplified dataset config
-├── triple_dataset.yaml        # Full triple input dataset config
-└── yolov13l_architecture.svg  # Architecture diagram
+├── 📁 Core Implementation
+│   ├── yolov13/                    # YOLOv13 framework
+│   │   └── ultralytics/cfg/models/v13/  # Model variants (n/s/m/l/x)
+│   ├── train_triple.py            # Original training script
+│   ├── fix_and_train.py           # Complete training pipeline
+│   └── triple_inference.py        # Triple input inference
+│
+├── ☁️ Cloud Deployment
+│   ├── standalone_train.py        # 🚀 Self-contained cloud training
+│   ├── cloud_setup.sh            # 🛠️ One-command environment setup
+│   ├── Dockerfile.cloud          # 🐳 Docker container
+│   ├── requirements-cloud.txt     # 📦 Cloud dependencies
+│   └── CLOUD_DEPLOYMENT.md       # 📖 Complete deployment guide
+│
+├── 📊 Sample Data
+│   ├── training_data_demo/         # Triple input demo dataset
+│   │   ├── images/primary/        # Primary images with objects
+│   │   ├── images/detail1/        # First detail images  
+│   │   ├── images/detail2/        # Second detail images
+│   │   └── labels/               # YOLO format annotations
+│   ├── working_dataset.yaml       # Demo dataset config
+│   └── triple_dataset.yaml        # Full triple input config
+│
+├── 📈 Results & Docs
+│   ├── runs/                       # Training outputs
+│   ├── yolov13l_architecture.svg  # Architecture diagram
+│   ├── README.md                  # This file
+│   └── deployment_package/         # Legacy deployment
 ```
 
-## 🚀 Deployment
+## ☁️ Cloud Deployment
 
-### Standalone Deployment Package
+### 🌐 **Supported Platforms**
 
-```bash
-# Use the pre-built deployment package
-cd deployment_package
-python setup_deployment.py
-python train_triple.py --data triple_dataset.yaml --model yolov13s --epochs 50
-```
+| Platform | Status | Quick Start Command |
+|----------|--------|-------------------|
+| **Google Colab** | ✅ Ready | `!git clone ... && !./cloud_setup.sh` |
+| **AWS EC2** | ✅ Ready | `./cloud_setup.sh && python3 standalone_train.py` |
+| **Google Cloud** | ✅ Ready | `./cloud_setup.sh && python3 standalone_train.py` |
+| **Azure VM** | ✅ Ready | `./cloud_setup.sh && python3 standalone_train.py` |
+| **RunPod** | ✅ Ready | `./cloud_setup.sh && python3 standalone_train.py` |
+| **Local Docker** | ✅ Ready | `docker build -f Dockerfile.cloud -t yolov13-triple .` |
 
-The `deployment_package/` contains everything needed to run on any machine:
-- Complete YOLOv13 implementation
-- All model variants
-- Sample training data
-- Requirements and setup scripts
+### 🔧 **Deployment Features**
+
+- **✅ Self-Managing Dependencies**: Automatically installs missing packages
+- **✅ Environment Auto-Setup**: Configures Python paths and imports  
+- **✅ Robust Error Handling**: Graceful fallbacks for import issues
+- **✅ Model Auto-Generation**: Creates configs if repository files missing
+- **✅ Cross-Platform**: Works on Linux, macOS, Windows
+- **✅ GPU Auto-Detection**: Automatically uses available GPUs
+
+### 📖 **Detailed Deployment Guide**
+
+See **[CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md)** for:
+- Platform-specific setup instructions
+- Troubleshooting common issues  
+- Performance optimization tips
+- Resource recommendations
+- Security best practices
+
+### 🛠️ **Quick Troubleshooting**
+
+| Issue | Solution |
+|-------|----------|
+| `No module named 'ultralytics'` | Run `./cloud_setup.sh` first |
+| `Permission denied` | Run `chmod +x cloud_setup.sh standalone_train.py` |
+| `Out of memory` | Reduce batch size: `--batch 1` |
+| `CUDA out of memory` | Use CPU: `--device cpu` |
+| `Dataset not found` | Check paths in `working_dataset.yaml` |
+
+**Need help?** See [CLOUD_DEPLOYMENT.md](CLOUD_DEPLOYMENT.md) for detailed troubleshooting.
 
 ## 🤝 Contributing
 
@@ -382,26 +450,51 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 
 ---
 
-## 🚀 Get Started Now!
+## 🚀 Deploy Anywhere in 30 Seconds!
 
-### Quick Test with Demo Data
-
-```bash
-# Clone and test with included triple input demo dataset
-git clone https://github.com/yourusername/yolo_3dual_input.git && \
-cd yolo_3dual_input && \
-python train_triple.py --data working_dataset.yaml --model yolov13s --epochs 3 --batch 1 --device cpu
-```
-
-### Full Triple Input Pipeline
+### ⚡ **Cloud Quick Start**
 
 ```bash
-# Test complete triple input functionality
-python fix_and_train.py --train --epochs 5 --batch 1 --device cpu
-
-# Run inference on demo triple images  
-python triple_inference_demo.py
+# Deploy on ANY cloud platform with one command
+git clone https://github.com/Sompote/yolov13-triple-input.git && \
+cd yolov13-triple-input && \
+./cloud_setup.sh && \
+python3 standalone_train.py --data working_dataset.yaml --model s --epochs 50 --batch 8 --device cpu
 ```
+
+### 🐳 **Docker One-Liner**
+
+```bash
+# Complete containerized deployment
+git clone https://github.com/Sompote/yolov13-triple-input.git && \
+cd yolov13-triple-input && \
+docker build -f Dockerfile.cloud -t yolov13-triple . && \
+docker run -v $(pwd)/runs:/workspace/runs yolov13-triple python3 standalone_train.py --data working_dataset.yaml --model s --epochs 50 --batch 8
+```
+
+### 📱 **Platform Examples**
+
+#### Google Colab
+```python
+# Paste in Colab cell and run
+!git clone https://github.com/Sompote/yolov13-triple-input.git
+%cd yolov13-triple-input  
+!chmod +x cloud_setup.sh && ./cloud_setup.sh
+!python3 standalone_train.py --data working_dataset.yaml --model s --epochs 50 --batch 16 --device 0
+```
+
+#### AWS/GCP/Azure Terminal
+```bash
+# SSH to your cloud VM and run
+curl -sSL https://raw.githubusercontent.com/Sompote/yolov13-triple-input/main/cloud_setup.sh | bash
+```
+
+### ✨ **What You Get**
+- 🎯 **Instant Setup**: No dependency headaches
+- 🔄 **Triple Input Processing**: Enhanced detection accuracy  
+- 📏 **5 Model Variants**: From 2.6M to 68M parameters
+- 📊 **Training Visualization**: Results, curves, confusion matrices
+- 🚀 **Production Ready**: Trained models ready for deployment
 
 **🌟 Star this repository if you find it useful!**
 
