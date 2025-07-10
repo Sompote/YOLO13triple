@@ -57,21 +57,33 @@ pip install -r requirements.txt
 #### 1. **Training with Model Variants**
 
 ```bash
-# Train with small variant (recommended for most cases)
-python train_triple.py --data working_dataset.yaml --model yolov13s --epochs 50 --batch 8 --device cpu
+# Train with small variant using triple input dataset (recommended)
+python train_triple.py --data triple_dataset.yaml --model yolov13s --epochs 50 --batch 8 --device cpu
 
-# Train with nano variant (fastest)
-python train_triple.py --data working_dataset.yaml --model yolov13n --epochs 100 --batch 16 --device cpu
+# Train with nano variant (fastest) - ideal for testing triple input concept
+python train_triple.py --data triple_dataset.yaml --model yolov13n --epochs 100 --batch 16 --device cpu
 
-# Train with medium variant (higher accuracy)
-python train_triple.py --data working_dataset.yaml --model yolov13m --epochs 50 --batch 4 --device cpu
+# Train with medium variant (higher accuracy) - full triple input benefits
+python train_triple.py --data triple_dataset.yaml --model yolov13m --epochs 50 --batch 4 --device cpu
 ```
 
-#### 2. **Inference**
+#### 2. **Triple Input Inference**
 
 ```bash
-# Run inference with trained model
-python triple_inference.py --weights runs/train/triple_yolo/weights/best.pt --source path/to/images
+# Run inference with synchronized triple images
+python triple_inference.py \
+    --weights runs/train/triple_yolo/weights/best.pt \
+    --primary dataset/images/primary/test/ \
+    --detail1 dataset/images/detail1/test/ \
+    --detail2 dataset/images/detail2/test/ \
+    --save-dir results/
+
+# Single scene inference
+python triple_inference.py \
+    --weights runs/train/best.pt \
+    --primary scene_001_primary.jpg \
+    --detail1 scene_001_detail1.jpg \
+    --detail2 scene_001_detail2.jpg
 ```
 
 #### 3. **Complete Training Pipeline**
@@ -83,20 +95,88 @@ python fix_and_train.py --train --epochs 50 --batch 8 --device cpu
 
 ## 📁 Dataset Structure
 
+The triple input model requires **3 synchronized images** for each training sample:
+
 ```
 training_data_demo/
 ├── images/
-│   ├── train/          # Primary training images  
-│   └── val/            # Primary validation images
+│   ├── primary/        # Primary images with objects to detect
+│   │   ├── train/      # Primary training images (image_1.jpg, image_2.jpg, ...)
+│   │   └── val/        # Primary validation images
+│   ├── detail1/        # First detail images (same scenes, different view/zoom)
+│   │   ├── train/      # Detail1 training images (image_1.jpg, image_2.jpg, ...)
+│   │   └── val/        # Detail1 validation images
+│   ├── detail2/        # Second detail images (additional context/angle)
+│   │   ├── train/      # Detail2 training images (image_1.jpg, image_2.jpg, ...)
+│   │   └── val/        # Detail2 validation images
+│   ├── train/          # Simplified structure (primary images only)
+│   └── val/            # Simplified structure (primary images only)
 └── labels/
-    ├── train/          # YOLO format labels
-    └── val/            # YOLO format labels
+    ├── train/          # YOLO format labels (for primary images only)
+    │   ├── image_1.txt
+    │   ├── image_2.txt
+    │   └── image_3.txt
+    └── val/            # YOLO format labels (for primary images only)
+        └── image_1.txt
 ```
+
+### 🔄 **Image Correspondence**
+**Critical**: All three image types must have **matching filenames** for the same scene:
+- `primary/train/image_1.jpg` ↔ `detail1/train/image_1.jpg` ↔ `detail2/train/image_1.jpg`
+- `labels/train/image_1.txt` (contains annotations for the primary image)
 
 ### Label Format (Standard YOLO)
 ```
 class_id center_x center_y width height
 ```
+**Note**: Labels are only provided for primary images. Detail images provide additional context.
+
+### 📋 **Dataset Preparation Guide**
+
+#### 1. **Creating Triple Input Datasets**
+
+For each scene, you need to capture/prepare 3 related images:
+
+```python
+# Example dataset creation
+import shutil
+from pathlib import Path
+
+def create_triple_dataset(base_dir):
+    """Create proper triple input dataset structure"""
+    base_path = Path(base_dir)
+    
+    # Create directory structure
+    dirs = [
+        "images/primary/train", "images/primary/val",
+        "images/detail1/train", "images/detail1/val", 
+        "images/detail2/train", "images/detail2/val",
+        "labels/train", "labels/val"
+    ]
+    
+    for dir_path in dirs:
+        (base_path / dir_path).mkdir(parents=True, exist_ok=True)
+    
+    print("Triple input dataset structure created!")
+
+# Usage
+create_triple_dataset("my_triple_dataset")
+```
+
+#### 2. **Image Synchronization Requirements**
+
+| Image Type | Purpose | Example Use Cases |
+|------------|---------|-------------------|
+| **Primary** | Main detection target | Standard camera view, main object focus |
+| **Detail1** | Enhanced detail view | Zoomed in, different angle, close-up |
+| **Detail2** | Additional context | Wide view, different lighting, side view |
+
+#### 3. **Data Collection Strategies**
+
+- **Multi-camera setup**: Capture simultaneously from 3 cameras
+- **Sequential capture**: Same camera, different positions/zoom levels
+- **Synthetic data**: Generate variations of the same scene
+- **Data augmentation**: Create detail views from primary images
 
 ## 🛠️ Advanced Usage
 
@@ -112,9 +192,9 @@ model_m = YOLO('yolov13/ultralytics/cfg/models/v13/yolov13m.yaml')  # Medium
 model_l = YOLO('yolov13/ultralytics/cfg/models/v13/yolov13l.yaml')  # Large
 model_x = YOLO('yolov13/ultralytics/cfg/models/v13/yolov13x.yaml')  # Extra Large
 
-# Train with custom settings
+# Train with triple input dataset
 results = model_s.train(
-    data='working_dataset.yaml',
+    data='triple_dataset.yaml',  # Use triple input dataset config
     epochs=100,
     imgsz=640,
     batch=16
@@ -132,11 +212,18 @@ inference = TripleYOLOInference(
     device='cpu'
 )
 
-# Run inference on triple images
+# Run inference on synchronized triple images
 results = inference.predict(
-    primary_image='path/to/primary.jpg',
-    detail1_image='path/to/detail1.jpg', 
-    detail2_image='path/to/detail2.jpg'
+    primary_image='dataset/images/primary/test/scene_001.jpg',
+    detail1_image='dataset/images/detail1/test/scene_001.jpg', 
+    detail2_image='dataset/images/detail2/test/scene_001.jpg'
+)
+
+# Alternative: Direct file pattern matching
+results = inference.predict_from_pattern(
+    base_dir='dataset/images',
+    image_name='scene_001.jpg',  # Will automatically find all 3 versions
+    save_result='result_scene_001.jpg'
 )
 ```
 
@@ -211,14 +298,23 @@ yolo_3dual_input/
 ├── yolov13/                    # Core YOLOv13 implementation
 │   └── ultralytics/
 │       └── cfg/models/v13/     # Model variant configurations
-├── training_data_demo/         # Sample dataset
+├── training_data_demo/         # Sample triple input dataset
+│   ├── images/
+│   │   ├── primary/           # Primary images with objects
+│   │   ├── detail1/           # First detail images
+│   │   ├── detail2/           # Second detail images
+│   │   ├── train/             # Simplified structure
+│   │   └── val/               # Simplified structure
+│   └── labels/                # YOLO format annotations
 ├── runs/                       # Training outputs
 ├── deployment_package/         # Standalone deployment
 ├── train_triple.py            # Main training script
 ├── fix_and_train.py           # Complete training pipeline
-├── triple_inference.py        # Inference script
+├── triple_inference.py        # Triple input inference script
 ├── detect_triple.py           # Detection script
-└── working_dataset.yaml       # Dataset configuration
+├── working_dataset.yaml       # Simplified dataset config
+├── triple_dataset.yaml        # Full triple input dataset config
+└── yolov13l_architecture.svg  # Architecture diagram
 ```
 
 ## 🚀 Deployment
@@ -288,11 +384,23 @@ This project is licensed under the AGPL-3.0 License - see the [LICENSE](LICENSE)
 
 ## 🚀 Get Started Now!
 
+### Quick Test with Demo Data
+
 ```bash
-# One-command quick test
+# Clone and test with included triple input demo dataset
 git clone https://github.com/yourusername/yolo_3dual_input.git && \
 cd yolo_3dual_input && \
 python train_triple.py --data working_dataset.yaml --model yolov13s --epochs 3 --batch 1 --device cpu
+```
+
+### Full Triple Input Pipeline
+
+```bash
+# Test complete triple input functionality
+python fix_and_train.py --train --epochs 5 --batch 1 --device cpu
+
+# Run inference on demo triple images  
+python triple_inference_demo.py
 ```
 
 **🌟 Star this repository if you find it useful!**
