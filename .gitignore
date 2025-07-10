@@ -129,7 +129,10 @@ wandb/
 
 # Dataset files
 datasets/
-data/
+training_data/
+sample_data/
+/data/
+# NOTE: yolov13/ultralytics/data/ is essential for cloud deployment - NOT excluded
 *.zip
 *.tar.gz
 *.tar
