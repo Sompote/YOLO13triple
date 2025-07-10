@@ -156,15 +156,22 @@ Run: `python train_triple.py --data triple_dataset.yaml --model yolov13-triple.y
             project (str): Project directory
             name (str): Experiment name
         """
-        # Use the YOLOv13 triple config file
+        # Use the YOLOv13 config file - support different variants
         config_path = yolov13_path / "ultralytics" / "cfg" / "models" / "v13" / f"{model_config}.yaml"
         
         if not config_path.exists():
             print(f"Model config file not found: {config_path}")
             print("Available configs:")
             config_dir = config_path.parent
+            available_configs = []
             for cfg in config_dir.glob("*.yaml"):
+                available_configs.append(cfg.stem)
                 print(f"  - {cfg.stem}")
+            
+            # Try to suggest closest match
+            if model_config in ['yolov13s', 'yolov13m', 'yolov13l', 'yolov13x', 'yolov13n']:
+                if 'yolov13' in available_configs:
+                    print(f"\nSuggestion: Try using 'yolov13' (base model) instead of '{model_config}'")
             return None
         
         try:

@@ -376,59 +376,66 @@ class TripleInputConv(nn.Module):
     def __init__(self, c1, c2, k=3, s=1, p=None, g=1, d=1, act=True):
         """Initialize triple input convolution with fusion mechanism."""
         super().__init__()
-        # Ensure channel division is clean
-        channels_per_input = c2 // 3
-        if c2 % 3 != 0:
-            # Adjust to make it divisible
-            channels_per_input = (c2 + 2) // 3
         
-        # Individual convolution for each input
-        self.conv1 = Conv(c1, channels_per_input, k, s, p, g, d, act)
-        self.conv2 = Conv(c1, channels_per_input, k, s, p, g, d, act)
-        self.conv3 = Conv(c1, channels_per_input, k, s, p, g, d, act)
+        # Store original parameters
+        self.c1 = c1  # Input channels per image (e.g., 3 for RGB)
+        self.c2 = c2  # Output channels
+        self.k = k
+        self.s = s
+        self.d = d
         
-        # Calculate actual combined channels
-        combined_channels = channels_per_input * 3
+        # Simple approach: use standard convolution for single input mode
+        # For triple input mode, we'll handle it in forward pass
+        self.main_conv = Conv(c1, c2, k, s, p, 1, d, act)
         
-        # Fusion layer to combine features and adjust to target channels
-        self.fusion = Conv(combined_channels, c2, 1, 1, 0, act=act)
-        
-        # Attention mechanism for feature weighting
-        attention_reduction = max(1, c2 // 16)
-        self.attention = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(c2, attention_reduction, 1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(attention_reduction, c2, 1),
-            nn.Sigmoid()
-        )
+        # For triple input: additional processing branches
+        if c1 == 3:  # RGB input case
+            # Each branch processes one RGB image
+            branch_channels = max(c2 // 4, 8)  # Reserve some channels for fusion
+            
+            self.branch1 = Conv(c1, branch_channels, k, s, p, 1, d, act)
+            self.branch2 = Conv(c1, branch_channels, k, s, p, 1, d, act)
+            self.branch3 = Conv(c1, branch_channels, k, s, p, 1, d, act)
+            
+            # Fusion layer
+            total_branch_channels = branch_channels * 3
+            remaining_channels = c2 - total_branch_channels
+            
+            if remaining_channels > 0:
+                self.fusion = Conv(total_branch_channels, c2, 1, 1, 0, 1, 1, act)
+            else:
+                self.fusion = nn.Identity()
+                self.c2 = total_branch_channels  # Adjust output channels
+        else:
+            # For non-RGB inputs, just use main conv
+            self.branch1 = self.branch2 = self.branch3 = None
+            self.fusion = nn.Identity()
 
     def forward(self, x):
         """
         Forward pass for triple input.
         
         Args:
-            x: List of 3 tensors [img1, img2, img3] where img1 contains labels
+            x: Either a list of 3 tensors [img1, img2, img3] or a single tensor
         """
-        if isinstance(x, list) and len(x) == 3:
-            # Process each input separately
-            feat1 = self.conv1(x[0])  # Primary image with labels
-            feat2 = self.conv2(x[1])  # Additional detail image 1
-            feat3 = self.conv3(x[2])  # Additional detail image 2
+        if isinstance(x, list) and len(x) == 3 and self.branch1 is not None:
+            # Triple input mode - process each branch separately
+            feat1 = self.branch1(x[0])  # Primary image with labels
+            feat2 = self.branch2(x[1])  # Additional detail image 1
+            feat3 = self.branch3(x[2])  # Additional detail image 2
             
             # Concatenate features
             combined = torch.cat([feat1, feat2, feat3], dim=1)
             
-            # Apply fusion
-            fused = self.fusion(combined)
+            # Apply fusion if available
+            if not isinstance(self.fusion, nn.Identity):
+                result = self.fusion(combined)
+            else:
+                result = combined
             
-            # Apply attention weighting
-            attention_weights = self.attention(fused)
-            weighted_features = fused * attention_weights
-            
-            return weighted_features
+            return result
         else:
-            # Fallback for single input (compatibility)
+            # Single input mode (standard convolution)
             if isinstance(x, list):
-                x = x[0]
-            return self.conv1(x)
+                x = x[0]  # Take first image if list provided
+            return self.main_conv(x)
