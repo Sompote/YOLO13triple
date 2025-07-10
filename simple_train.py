@@ -15,9 +15,20 @@ def setup_local_ultralytics():
     current_dir = Path(__file__).parent
     yolov13_path = current_dir / "yolov13"
     
-    # Add to Python path
-    if str(yolov13_path) not in sys.path:
-        sys.path.insert(0, str(yolov13_path))
+    if not yolov13_path.exists():
+        print(f"❌ YOLOv13 directory not found: {yolov13_path}")
+        return None
+    
+    # Remove any existing ultralytics imports first
+    modules_to_remove = [key for key in sys.modules.keys() if key.startswith('ultralytics')]
+    for module in modules_to_remove:
+        del sys.modules[module]
+        print(f"🗑️ Removed cached module: {module}")
+    
+    # Add to Python path at the very beginning
+    if str(yolov13_path) in sys.path:
+        sys.path.remove(str(yolov13_path))
+    sys.path.insert(0, str(yolov13_path))
     
     # Clean environment and prevent package upgrades
     os.environ["PYTHONPATH"] = str(yolov13_path) + ":" + os.environ.get("PYTHONPATH", "")
@@ -32,10 +43,20 @@ def setup_local_ultralytics():
     # Force NumPy 1.x compatibility mode
     os.environ["NUMPY_EXPERIMENTAL_DTYPE_API"] = "0"
     
-    # Remove cached modules
-    modules_to_remove = [key for key in sys.modules.keys() if key.startswith('ultralytics')]
-    for module in modules_to_remove:
-        del sys.modules[module]
+    # Verify the local ultralytics can be found
+    ultralytics_init = yolov13_path / "ultralytics" / "__init__.py"
+    ultralytics_data_init = yolov13_path / "ultralytics" / "data" / "__init__.py"
+    
+    if not ultralytics_init.exists():
+        print(f"❌ Local ultralytics __init__.py not found: {ultralytics_init}")
+        return None
+        
+    if not ultralytics_data_init.exists():
+        print(f"❌ Local ultralytics.data __init__.py not found: {ultralytics_data_init}")
+        return None
+    
+    print(f"✅ Local ultralytics path configured: {yolov13_path}")
+    print(f"✅ Python path: {sys.path[:3]}...")  # Show first 3 paths
     
     return yolov13_path
 
@@ -54,11 +75,34 @@ def simple_train(data_config, model_variant='s', epochs=50, batch_size=4, device
     # Setup local ultralytics
     yolov13_path = setup_local_ultralytics()
     
+    if yolov13_path is None:
+        print("❌ Failed to setup local ultralytics")
+        return False
+    
     try:
+        # Test import step by step
+        print("📥 Testing ultralytics import...")
+        import ultralytics
+        print(f"✅ Ultralytics imported from: {ultralytics.__file__}")
+        
+        print("📥 Testing YOLO import...")
         from ultralytics import YOLO
         print("✅ Successfully imported YOLO")
+        
+        # Test if it's our local version
+        if str(yolov13_path) in ultralytics.__file__:
+            print("✅ Using local YOLOv13 ultralytics implementation")
+        else:
+            print(f"⚠️ Warning: Using external ultralytics from {ultralytics.__file__}")
+            
     except ImportError as e:
         print(f"❌ Failed to import YOLO: {e}")
+        print("🔍 Checking what's in the local ultralytics...")
+        ultralytics_dir = yolov13_path / "ultralytics"
+        if ultralytics_dir.exists():
+            print(f"📁 Contents of {ultralytics_dir}:")
+            for item in ultralytics_dir.iterdir():
+                print(f"   - {item.name}")
         return False
     
     try:
