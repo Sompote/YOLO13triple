@@ -29,6 +29,15 @@ albumentations>=1.3.0
 # Utilities
 pathlib2>=2.3.0
 
+# Model Analysis and Hub Integration
+thop>=0.1.1
+huggingface_hub>=0.19.0
+requests>=2.31.0
+
+# Additional ML utilities
+seaborn>=0.11.0
+scipy>=1.9.0
+
 # Installation Notes:
 # 1. Install with: pip install -r requirements.txt
 # 2. If NumPy 2.x gets installed, fix with: pip install "numpy<2.0" --force-reinstall
@@ -39,3 +48,5 @@ pathlib2>=2.3.0
 # torch==2.2.2
 # opencv-python==4.9.0
 # pillow==10.4.0
+# thop==0.1.1
+# huggingface_hub==0.19.4
