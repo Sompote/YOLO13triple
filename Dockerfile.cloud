@@ -1,0 +1,43 @@
+# YOLOv13 Triple Input - Cloud Deployment Dockerfile
+FROM python:3.9-slim
+
+# Set working directory
+WORKDIR /workspace
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    git \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements and install Python dependencies
+COPY requirements-cloud.txt .
+RUN pip install --no-cache-dir -r requirements-cloud.txt
+
+# Copy the entire project
+COPY . .
+
+# Set Python path
+ENV PYTHONPATH="/workspace:/workspace/yolov13:/workspace/yolov13/ultralytics"
+
+# Make scripts executable
+RUN chmod +x standalone_train.py
+RUN chmod +x cloud_setup.sh
+
+# Create non-root user for security
+RUN useradd -m -u 1000 yolo && chown -R yolo:yolo /workspace
+USER yolo
+
+# Default command
+CMD ["python3", "standalone_train.py", "--help"]
+
+# Usage:
+# docker build -f Dockerfile.cloud -t yolov13-triple .
+# docker run -v $(pwd)/data:/workspace/data yolov13-triple python3 standalone_train.py --data working_dataset.yaml --model s --epochs 50 --batch 8 --device cpu

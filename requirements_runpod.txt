@@ -1,0 +1,34 @@
+# Compatible versions for RunPod deployment
+numpy>=1.21.0,<2.0
+torch>=1.13.0
+torchvision>=0.14.0
+torchaudio>=0.13.0
+
+# Core dependencies
+ultralytics
+opencv-python
+pillow
+pyyaml
+requests
+scipy
+matplotlib
+seaborn
+pandas
+tqdm
+
+# Missing dependencies
+huggingface_hub
+transformers
+
+# Additional utilities
+psutil
+thop
+einops
+
+# For visualization
+tensorboard
+wandb
+
+# For data processing
+albumentations
+imgaug 

@@ -1,0 +1,33 @@
+# YOLOv13 Triple Input - Cloud Deployment Requirements
+# Minimal requirements for cloud/remote deployment
+
+# Core deep learning
+torch>=1.9.0
+torchvision>=0.10.0
+torchaudio>=0.9.0
+
+# YOLO framework
+ultralytics>=8.0.0
+
+# Computer vision
+opencv-python>=4.5.0
+
+# Scientific computing
+numpy>=1.21.0
+scipy>=1.7.0
+
+# Data handling
+pyyaml>=5.4.0
+pillow>=8.3.0
+
+# Utilities
+tqdm>=4.62.0
+matplotlib>=3.4.0
+
+# Optional for GPU acceleration
+# torch-audio  # Uncomment if needed
+# torchmetrics  # Uncomment if needed
+
+# Development (optional)
+# ipython
+# jupyter
