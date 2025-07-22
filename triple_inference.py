@@ -1,287 +1,293 @@
 #!/usr/bin/env python3
 """
-Direct inference script for triple input YOLO model
-Bypasses the standard YOLO predictor for better control over triple inputs
+Triple Input Hole Detection Inference Script
+Processes primary, detail1, and detail2 images for comprehensive hole detection
 """
-
 import sys
 import os
 from pathlib import Path
-import torch
-import torch.nn as nn
-import cv2
+import argparse
 import numpy as np
+import cv2
 
-# Add the yolov13 directory to Python path
-yolov13_path = Path(__file__).parent / "yolov13"
-sys.path.insert(0, str(yolov13_path))
+# Setup local ultralytics
+sys.path.insert(0, str(Path(__file__).parent / "yolov13"))
 
-from ultralytics.nn.modules.conv import TripleInputConv, Conv
-from ultralytics.nn.modules.block import C2f, SPPF
-from ultralytics.nn.modules.head import Detect
-from ultralytics.nn.modules import Concat
-from ultralytics.utils.torch_utils import initialize_weights
+try:
+    from ultralytics import YOLO
+    print("✅ Successfully imported YOLO from local ultralytics")
+except ImportError as e:
+    print(f"❌ Failed to import YOLO: {e}")
+    print("Make sure yolov13/ directory exists and contains ultralytics module")
+    sys.exit(1)
 
-
-class TripleYOLOModel(nn.Module):
-    """Simple triple input YOLO model for testing."""
-    
-    def __init__(self, nc=80):
-        super().__init__()
-        self.nc = nc
-        
-        # Backbone with triple input
-        self.conv0 = TripleInputConv(3, 64, 3, 2)  # Triple input layer
-        self.conv1 = Conv(64, 128, 3, 2)
-        self.c2f1 = C2f(128, 128, 3)
-        self.conv2 = Conv(128, 256, 3, 2)
-        self.c2f2 = C2f(256, 256, 6)
-        self.conv3 = Conv(256, 512, 3, 2)
-        self.c2f3 = C2f(512, 512, 6)
-        self.conv4 = Conv(512, 1024, 3, 2)
-        self.c2f4 = C2f(1024, 1024, 3)
-        self.sppf = SPPF(1024, 1024, 5)
-        
-        # Head
-        self.upsample1 = nn.Upsample(None, 2, "nearest")
-        self.concat1 = Concat(1)
-        self.c2f_head1 = C2f(1024 + 512, 512, 3)
-        
-        self.upsample2 = nn.Upsample(None, 2, "nearest")
-        self.concat2 = Concat(1)
-        self.c2f_head2 = C2f(512 + 256, 256, 3)
-        
-        self.conv_head1 = Conv(256, 256, 3, 2)
-        self.concat3 = Concat(1)
-        self.c2f_head3 = C2f(256 + 512, 512, 3)
-        
-        self.conv_head2 = Conv(512, 512, 3, 2)
-        self.concat4 = Concat(1)
-        self.c2f_head4 = C2f(512 + 1024, 1024, 3)
-        
-        # Detection heads
-        self.detect = Detect(nc, [256, 512, 1024])
-        
-        # Initialize weights
-        initialize_weights(self)
-    
-    def forward(self, x):
-        """Forward pass with triple input support."""
-        # Backbone
-        x0 = self.conv0(x)  # Triple input processing
-        x1 = self.conv1(x0)
-        x1 = self.c2f1(x1)
-        x2 = self.conv2(x1)
-        x2 = self.c2f2(x2)  # P3
-        x3 = self.conv3(x2)
-        x3 = self.c2f3(x3)  # P4
-        x4 = self.conv4(x3)
-        x4 = self.c2f4(x4)
-        x4 = self.sppf(x4)  # P5
-        
-        # Head
-        p5 = x4
-        p4_up = self.upsample1(p5)
-        p4 = self.concat1([p4_up, x3])
-        p4 = self.c2f_head1(p4)
-        
-        p3_up = self.upsample2(p4)
-        p3 = self.concat2([p3_up, x2])
-        p3 = self.c2f_head2(p3)  # Small objects
-        
-        # Downsample path
-        p4_down = self.conv_head1(p3)
-        p4 = self.concat3([p4_down, p4])
-        p4 = self.c2f_head3(p4)  # Medium objects
-        
-        p5_down = self.conv_head2(p4)
-        p5 = self.concat4([p5_down, p5])
-        p5 = self.c2f_head4(p5)  # Large objects
-        
-        # Detection
-        return self.detect([p3, p4, p5])
-
-
-def load_and_preprocess_images(primary_path, detail1_path, detail2_path, imgsz=640):
-    """Load and preprocess triple images."""
-    images = []
-    paths = [primary_path, detail1_path, detail2_path]
-    
-    for i, path in enumerate(paths):
-        if not Path(path).exists():
-            if i == 0:
-                raise FileNotFoundError(f"Primary image not found: {path}")
-            else:
-                print(f"Warning: Detail image {i} not found, using primary image")
-                path = primary_path
-        
-        # Load image
-        img = cv2.imread(path)
-        if img is None:
-            raise ValueError(f"Could not load image: {path}")
-        
-        # Resize
-        img = cv2.resize(img, (imgsz, imgsz))
-        
-        # Convert BGR to RGB and normalize
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        img = img.astype(np.float32) / 255.0
-        
-        # Convert to tensor
-        img_tensor = torch.from_numpy(img).permute(2, 0, 1)
-        images.append(img_tensor)
-    
-    return images
-
-
-def triple_inference(primary_path, detail1_path, detail2_path, 
-                    imgsz=640, conf_threshold=0.25):
-    """Run inference with triple input model."""
-    
-    # Load model
-    print("Creating triple input YOLO model...")
-    model = TripleYOLOModel(nc=80)
-    model.eval()
-    
-    # Load and preprocess images
-    print("Loading triple images...")
-    images = load_and_preprocess_images(primary_path, detail1_path, detail2_path, imgsz)
-    
-    # Prepare input (batch size 1)
-    input_tensor = images  # Pass as list for triple input
-    
-    print(f"Input shapes: {[img.shape for img in input_tensor]}")
-    
-    # Run inference
-    print("Running inference...")
-    with torch.no_grad():
-        # Add batch dimension to each image
-        batched_input = [img.unsqueeze(0) for img in input_tensor]
-        predictions = model(batched_input)
-    
-    print(f"Predictions type: {type(predictions)}")
-    if isinstance(predictions, tuple):
-        print(f"Predictions length: {len(predictions)}")
-        for i, p in enumerate(predictions):
-            if isinstance(p, torch.Tensor):
-                print(f"  Prediction {i} shape: {p.shape}")
-            elif isinstance(p, list):
-                print(f"  Prediction {i} is list with {len(p)} elements")
-                for j, item in enumerate(p):
-                    if isinstance(item, torch.Tensor):
-                        print(f"    Item {j} shape: {item.shape}")
-            else:
-                print(f"  Prediction {i} type: {type(p)}")
-    else:
-        print(f"Predictions shape: {predictions.shape}")
-    
-    print(f"Model completed inference successfully!")
-    
-    # Post-process results (basic)
-    if isinstance(predictions, tuple):
-        # YOLO detection head returns (inference_out, training_out)
-        # Use inference output (first element)
-        pred = predictions[0]  # Inference output
-        if isinstance(pred, torch.Tensor):
-            pred = pred[0]  # First batch
-        else:
-            print("Unexpected prediction format")
-            return None, predictions
-    else:
-        pred = predictions[0]  # First batch
-    
-    # Apply confidence threshold (assuming format [x, y, w, h, conf, ...])
-    if len(pred.shape) > 1 and pred.shape[-1] > 4:
-        conf_mask = pred[..., 4] > conf_threshold
-        filtered_pred = pred[conf_mask]
-    else:
-        print("Predictions format not as expected, returning raw predictions")
-        filtered_pred = pred
-    
-    print(f"Detections after confidence filtering: {len(filtered_pred)}")
-    
-    return filtered_pred, predictions
-
-
-def visualize_results(primary_path, predictions, save_path=None):
-    """Visualize detection results on primary image."""
-    
-    # Load primary image
-    img = cv2.imread(primary_path)
-    if img is None:
-        print(f"Could not load image for visualization: {primary_path}")
+def load_and_preprocess_image(image_path, target_size=640):
+    """Load and preprocess image for inference"""
+    if not Path(image_path).exists():
+        print(f"❌ Image not found: {image_path}")
         return None
     
-    h, w = img.shape[:2]
-    
-    # Add text overlay
-    cv2.putText(img, "Triple Input YOLO Detection", 
-               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    cv2.putText(img, f"Model: Custom Triple YOLO", 
-               (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-    cv2.putText(img, f"Detections: {len(predictions) if predictions is not None else 0}", 
-               (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-    
-    # Draw bounding boxes (if any predictions)
-    if predictions is not None and len(predictions) > 0:
-        for det in predictions:
-            x1, y1, x2, y2 = det[:4].int().tolist()
-            conf = det[4].item()
-            # Scale coordinates to image size
-            x1 = int(x1 * w / 640)
-            y1 = int(y1 * h / 640)
-            x2 = int(x2 * w / 640)
-            y2 = int(y2 * h / 640)
-            
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(img, f"{conf:.2f}", (x1, y1-10), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
-    
-    # Save result
-    if save_path:
-        cv2.imwrite(save_path, img)
-        print(f"Result saved to: {save_path}")
-    
-    return img
+    try:
+        # Load image
+        img = cv2.imread(str(image_path))
+        if img is None:
+            print(f"❌ Failed to load image: {image_path}")
+            return None
+        
+        # Convert BGR to RGB
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        print(f"✅ Loaded {image_path}: {img.shape}")
+        return img
+        
+    except Exception as e:
+        print(f"❌ Error loading {image_path}: {e}")
+        return None
 
+def run_triple_inference(model_path, primary_img, detail1_img, detail2_img, 
+                        save_dir="triple_inference_results", conf_threshold=0.25):
+    """Run inference on triple input images"""
+    
+    print("🔮 Starting triple input hole detection inference...")
+    print(f"📁 Model: {model_path}")
+    print(f"📁 Primary: {primary_img}")
+    print(f"📁 Detail1: {detail1_img}")
+    print(f"📁 Detail2: {detail2_img}")
+    print(f"🎯 Confidence threshold: {conf_threshold}")
+    
+    # Verify model exists
+    if not Path(model_path).exists():
+        print(f"❌ Model file not found: {model_path}")
+        return False
+    
+    try:
+        # Load model
+        print("📥 Loading triple input model...")
+        model = YOLO(model_path)
+        print("✅ Model loaded successfully")
+        
+        # Load and preprocess images
+        print("\n📸 Loading triple input images...")
+        primary = load_and_preprocess_image(primary_img)
+        detail1 = load_and_preprocess_image(detail1_img)
+        detail2 = load_and_preprocess_image(detail2_img)
+        
+        if primary is None or detail1 is None or detail2 is None:
+            print("❌ Failed to load one or more images")
+            return False
+        
+        # Create save directory
+        save_path = Path(save_dir) / "triple_detection"
+        save_path.mkdir(parents=True, exist_ok=True)
+        
+        # Run inference on each image type
+        results = {}
+        image_types = {
+            'primary': primary_img,
+            'detail1': detail1_img, 
+            'detail2': detail2_img
+        }
+        
+        print("\n🚀 Running inference on triple input set...")
+        
+        for img_type, img_path in image_types.items():
+            print(f"\n🔍 Processing {img_type} image...")
+            
+            # Run inference
+            result = model(
+                img_path,
+                save=True,
+                project=str(save_path.parent),
+                name=f"triple_detection/{img_type}",
+                conf=conf_threshold,
+                verbose=False
+            )
+            
+            results[img_type] = result[0] if result else None
+            
+            # Print detection summary for this image
+            if results[img_type] and results[img_type].boxes is not None:
+                detections = len(results[img_type].boxes)
+                print(f"   ✅ {img_type}: {detections} hole(s) detected")
+                
+                # Print confidence scores
+                if detections > 0:
+                    confidences = results[img_type].boxes.conf.cpu().numpy()
+                    avg_conf = np.mean(confidences)
+                    print(f"   📊 Average confidence: {avg_conf:.3f}")
+            else:
+                print(f"   📭 {img_type}: No holes detected")
+        
+        # Aggregate results across all three images
+        print("\n📊 Triple Input Detection Summary:")
+        print("=" * 50)
+        
+        total_detections = 0
+        all_confidences = []
+        
+        for img_type, result in results.items():
+            if result and result.boxes is not None:
+                detections = len(result.boxes)
+                total_detections += detections
+                
+                if detections > 0:
+                    confidences = result.boxes.conf.cpu().numpy()
+                    all_confidences.extend(confidences)
+                    max_conf = np.max(confidences)
+                    print(f"   {img_type:8}: {detections:2d} detections (max conf: {max_conf:.3f})")
+                else:
+                    print(f"   {img_type:8}: {detections:2d} detections")
+            else:
+                print(f"   {img_type:8}:  0 detections")
+        
+        print("-" * 50)
+        print(f"   Total   : {total_detections:2d} detections across all images")
+        
+        if all_confidences:
+            avg_conf = np.mean(all_confidences)
+            max_conf = np.max(all_confidences)
+            min_conf = np.min(all_confidences)
+            print(f"   Confidence: avg={avg_conf:.3f}, max={max_conf:.3f}, min={min_conf:.3f}")
+        
+        # Create combined visualization if possible
+        print(f"\n💾 Results saved to: {save_path}/")
+        print(f"   - Primary results: {save_path}/primary/")
+        print(f"   - Detail1 results: {save_path}/detail1/") 
+        print(f"   - Detail2 results: {save_path}/detail2/")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Triple inference failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
+def batch_triple_inference(model_path, input_dir, save_dir="batch_triple_results", conf_threshold=0.25):
+    """Run triple inference on a batch of image sets"""
+    
+    print("🔮 Starting batch triple input inference...")
+    
+    input_path = Path(input_dir)
+    if not input_path.exists():
+        print(f"❌ Input directory not found: {input_dir}")
+        return False
+    
+    # Look for image sets (assuming naming convention: name_primary.jpg, name_detail1.jpg, name_detail2.jpg)
+    primary_images = list(input_path.glob("*_primary.*"))
+    
+    if not primary_images:
+        print(f"❌ No primary images found with pattern '*_primary.*' in {input_dir}")
+        print("💡 Expected naming: basename_primary.jpg, basename_detail1.jpg, basename_detail2.jpg")
+        return False
+    
+    print(f"📁 Found {len(primary_images)} image sets")
+    
+    success_count = 0
+    
+    for primary_img in primary_images:
+        # Extract base name
+        base_name = primary_img.stem.replace('_primary', '')
+        
+        # Find corresponding detail images
+        detail1_img = primary_img.parent / f"{base_name}_detail1{primary_img.suffix}"
+        detail2_img = primary_img.parent / f"{base_name}_detail2{primary_img.suffix}"
+        
+        if not detail1_img.exists() or not detail2_img.exists():
+            print(f"⚠️ Missing detail images for {base_name}, skipping...")
+            continue
+        
+        print(f"\n🔄 Processing image set: {base_name}")
+        
+        # Create individual save directory
+        set_save_dir = Path(save_dir) / base_name
+        
+        # Run triple inference
+        success = run_triple_inference(
+            model_path=model_path,
+            primary_img=str(primary_img),
+            detail1_img=str(detail1_img),
+            detail2_img=str(detail2_img),
+            save_dir=str(set_save_dir),
+            conf_threshold=conf_threshold
+        )
+        
+        if success:
+            success_count += 1
+    
+    print(f"\n✅ Batch processing completed: {success_count}/{len(primary_images)} sets processed successfully")
+    return success_count > 0
 
 def main():
-    import argparse
+    parser = argparse.ArgumentParser(description='Triple Input Hole Detection Inference')
+    parser.add_argument('--model', type=str, required=True,
+                       help='Path to trained triple input model (.pt file)')
     
-    parser = argparse.ArgumentParser(description="Triple Input YOLO Inference")
-    parser.add_argument("--primary", type=str, required=True, help="Primary image path")
-    parser.add_argument("--detail1", type=str, required=True, help="Detail image 1 path")
-    parser.add_argument("--detail2", type=str, required=True, help="Detail image 2 path")
-    parser.add_argument("--imgsz", type=int, default=640, help="Image size")
-    parser.add_argument("--conf", type=float, default=0.25, help="Confidence threshold")
-    parser.add_argument("--save", type=str, default="triple_inference_result.jpg", help="Save path")
-    parser.add_argument("--show", action="store_true", help="Show result")
+    # Single set mode
+    parser.add_argument('--primary', type=str,
+                       help='Path to primary image')
+    parser.add_argument('--detail1', type=str,
+                       help='Path to detail1 image')
+    parser.add_argument('--detail2', type=str,
+                       help='Path to detail2 image')
+    
+    # Batch mode
+    parser.add_argument('--batch-dir', type=str,
+                       help='Directory containing image sets (batch processing)')
+    
+    parser.add_argument('--save-dir', type=str, default='triple_inference_results',
+                       help='Save directory for results')
+    parser.add_argument('--conf', type=float, default=0.25,
+                       help='Confidence threshold (0.0-1.0)')
     
     args = parser.parse_args()
     
-    try:
-        # Run inference
-        detections, raw_pred = triple_inference(
-            args.primary, args.detail1, args.detail2,
-            args.imgsz, args.conf
+    print("=" * 70)
+    print("🔮 YOLOv13 Triple Input Hole Detection Inference")
+    print("=" * 70)
+    
+    # Validate arguments
+    if args.batch_dir:
+        # Batch mode
+        success = batch_triple_inference(
+            model_path=args.model,
+            input_dir=args.batch_dir,
+            save_dir=args.save_dir,
+            conf_threshold=args.conf
         )
-        
-        # Visualize results
-        result_img = visualize_results(args.primary, detections, args.save)
-        
-        # Show if requested
-        if args.show and result_img is not None:
-            cv2.imshow("Triple Input YOLO Result", result_img)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
-        
-        print("✅ Triple input inference completed successfully!")
-        
-    except Exception as e:
-        print(f"❌ Inference failed: {e}")
-        import traceback
-        traceback.print_exc()
-
+    elif args.primary and args.detail1 and args.detail2:
+        # Single set mode
+        success = run_triple_inference(
+            model_path=args.model,
+            primary_img=args.primary,
+            detail1_img=args.detail1,
+            detail2_img=args.detail2,
+            save_dir=args.save_dir,
+            conf_threshold=args.conf
+        )
+    else:
+        print("❌ Please provide either:")
+        print("   1. Single set: --primary, --detail1, --detail2")
+        print("   2. Batch mode: --batch-dir")
+        parser.print_help()
+        return False
+    
+    if success:
+        print("\n🎉 Triple input inference completed successfully!")
+        print(f"📁 Check results in: {args.save_dir}/")
+        print("\n💡 Triple input provides enhanced detection by analyzing:")
+        print("   - Primary view: Overall context and main perspective")
+        print("   - Detail1: Close-up details and fine features")
+        print("   - Detail2: Additional angles and perspectives")
+    else:
+        print("\n❌ Triple inference failed")
+        print("💡 Make sure:")
+        print("   1. Model file exists and was trained with triple input")
+        print("   2. All three image files exist and are valid")
+        print("   3. Images correspond to the same object/scene")
+    
+    return success
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    sys.exit(0 if success else 1)

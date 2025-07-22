@@ -1,0 +1,14 @@
+names:
+  0: hole
+nc: 1
+path: /Users/sompoteyouwai/env/yolo13_dual/yolo13_16R2/my_dataset3
+train: images/primary/train
+val: images/primary/val
+
+# Triple input configuration
+triple_input: true
+detail1_path: images/detail1
+detail2_path: images/detail2
+dataset_type: triple_yolo
+task: detect
+

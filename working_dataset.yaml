@@ -13,3 +13,9 @@ nc: 10
 path: /Users/sompoteyouwai/env/yolo_3dual_input/training_data_demo
 train: images/train
 val: images/val
+
+# Debug info - verify these paths exist:
+# Train images: /Users/sompoteyouwai/env/yolo_3dual_input/training_data_demo/images/train/
+# Val images: /Users/sompoteyouwai/env/yolo_3dual_input/training_data_demo/images/val/
+# Train labels: /Users/sompoteyouwai/env/yolo_3dual_input/training_data_demo/labels/train/
+# Val labels: /Users/sompoteyouwai/env/yolo_3dual_input/training_data_demo/labels/val/
