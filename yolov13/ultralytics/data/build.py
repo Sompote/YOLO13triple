@@ -10,6 +10,7 @@ from PIL import Image
 from torch.utils.data import dataloader, distributed
 
 from ultralytics.data.dataset import GroundingDataset, YOLODataset, YOLOMultiModalDataset
+from .triple_dataset import TripleYOLODataset
 from ultralytics.data.loaders import (
     LOADERS,
     LoadImagesAndVideos,
@@ -91,7 +92,27 @@ def seed_worker(worker_id):  # noqa
 
 def build_yolo_dataset(cfg, img_path, batch, data, mode="train", rect=False, stride=32, multi_modal=False):
     """Build YOLO Dataset."""
-    dataset = YOLOMultiModalDataset if multi_modal else YOLODataset
+    # Debug: Check if data is None
+    if data is None:
+        print(f"Warning: data is None in build_yolo_dataset, using standard YOLODataset")
+        dataset = YOLODataset
+    else:
+        # Check for forced mode override (from cfg)
+        force_single = getattr(cfg, 'force_single_mode', False)
+        
+        # Check for triple input mode in data configuration
+        triple_input = data.get('triple_input', False) if isinstance(data, dict) else False
+        
+        if triple_input and not force_single:
+            print(f"Using TripleYOLODataset for {mode} mode")
+            # Use TripleYOLODataset for both training and validation in triple input mode
+            dataset = TripleYOLODataset
+        elif multi_modal:
+            dataset = YOLOMultiModalDataset
+        else:
+            print(f"Using standard YOLODataset for {mode} mode")
+            dataset = YOLODataset
+    
     return dataset(
         img_path=img_path,
         imgsz=cfg.imgsz,

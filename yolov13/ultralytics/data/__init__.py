@@ -10,6 +10,7 @@ from .dataset import (
     YOLODataset,
     YOLOMultiModalDataset,
 )
+from .triple_dataset import TripleYOLODataset
 
 __all__ = (
     "BaseDataset",
@@ -19,6 +20,7 @@ __all__ = (
     "YOLOMultiModalDataset",
     "YOLOConcatDataset",
     "GroundingDataset",
+    "TripleYOLODataset",
     "build_yolo_dataset",
     "build_grounding",
     "build_dataloader",

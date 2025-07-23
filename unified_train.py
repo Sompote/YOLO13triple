@@ -230,8 +230,8 @@ def train_model(data_config, model_variant='s', epochs=50, batch_size=4, device=
             'save_hybrid': False,
             'half': False,
             'dnn': False,
-            'conf': 0.1,
-            'iou': 0.5,
+            'conf': 0.01,         # Optimized for small objects
+            'iou': 0.3,           # Optimized for small objects
             'max_det': 300,
         }
         

@@ -1,0 +1,13 @@
+# Fixed Dataset Configuration for Single-Class Hole Detection
+# Using same images for train and validation to test model learning
+
+path: /Users/sompoteyouwai/env/yolo13_dual/yolo13_23_jul/my_dataset3
+train: images/primary/train
+val: images/primary/train  # Same as train for testing
+
+nc: 1
+names:
+  0: hole
+
+# Use SINGLE mode (not triple) for reliable validation
+# Remove triple input configuration for now

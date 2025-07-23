@@ -41,7 +41,7 @@ scipy>=1.9.0
 # Installation Notes:
 # 1. Install with: pip install -r requirements.txt
 # 2. If NumPy 2.x gets installed, fix with: pip install "numpy<2.0" --force-reinstall
-# 3. Test installation with: python test_package_stability.py
+# 3. Test installation with: python -c "import torch, cv2, numpy; print('All packages loaded successfully')"
 
 # Working Versions (Verified Compatible):
 # numpy==1.26.4

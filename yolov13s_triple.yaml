@@ -120,6 +120,7 @@ head:
   - Detect
   - - 10
 nc: 10
+ch: 9  # Input channels for triple images (3 images * 3 channels each)
 scales:
   s:
   - 0.33

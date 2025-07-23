@@ -566,6 +566,13 @@ def ap_per_class(
         x (np.ndarray): X-axis values for the curves. Shape: (1000,).
         prec_values (np.ndarray): Precision values at mAP@0.5 for each class. Shape: (nc, 1000).
     """
+    # Handle edge cases with empty inputs
+    if len(tp) == 0 or len(conf) == 0 or len(pred_cls) == 0 or len(target_cls) == 0:
+        x = np.linspace(0, 1, 1000)
+        return (np.array([]), np.array([]), np.array([]), np.array([]), np.array([]), 
+                np.zeros((0, 10)), np.array([], dtype=int), np.zeros((0, 1000)), 
+                np.zeros((0, 1000)), np.zeros((0, 1000)), x, np.zeros((0, 1000)))
+
     # Sort by objectness
     i = np.argsort(-conf)
     tp, conf, pred_cls = tp[i], conf[i], pred_cls[i]
@@ -604,7 +611,8 @@ def ap_per_class(
             if j == 0:
                 prec_values.append(np.interp(x, mrec, mpre))  # precision at mAP@0.5
 
-    prec_values = np.array(prec_values)  # (nc, 1000)
+    # Ensure prec_values has proper shape even when empty
+    prec_values = np.array(prec_values) if prec_values else np.zeros((nc, 1000))  # (nc, 1000)
 
     # Compute F1 (harmonic mean of precision and recall)
     f1_curve = 2 * p_curve * r_curve / (p_curve + r_curve + eps)
@@ -616,10 +624,20 @@ def ap_per_class(
         plot_mc_curve(x, p_curve, save_dir / f"{prefix}P_curve.png", names, ylabel="Precision", on_plot=on_plot)
         plot_mc_curve(x, r_curve, save_dir / f"{prefix}R_curve.png", names, ylabel="Recall", on_plot=on_plot)
 
-    i = smooth(f1_curve.mean(0), 0.1).argmax()  # max F1 index
-    p, r, f1 = p_curve[:, i], r_curve[:, i], f1_curve[:, i]  # max-F1 precision, recall, F1 values
-    tp = (r * nt).round()  # true positives
-    fp = (tp / (p + eps) - tp).round()  # false positives
+    # Handle edge cases with empty arrays
+    if nc == 0 or f1_curve.size == 0:
+        # Return empty arrays with proper shapes
+        p = np.zeros(nc)
+        r = np.zeros(nc) 
+        f1 = np.zeros(nc)
+        tp = np.zeros(nc)
+        fp = np.zeros(nc)
+    else:
+        i = smooth(f1_curve.mean(0), 0.1).argmax()  # max F1 index
+        p, r, f1 = p_curve[:, i], r_curve[:, i], f1_curve[:, i]  # max-F1 precision, recall, F1 values
+        tp = (r * nt).round()  # true positives
+        fp = (tp / (p + eps) - tp).round()  # false positives
+    
     return tp, fp, p, r, f1, ap, unique_classes.astype(int), p_curve, r_curve, f1_curve, x, prec_values
 
 
@@ -665,9 +683,11 @@ class Metric(SimpleClass):
         Returns the Average Precision (AP) at an IoU threshold of 0.5 for all classes.
 
         Returns:
-            (np.ndarray, list): Array of shape (nc,) with AP50 values per class, or an empty list if not available.
+            (np.ndarray): Array of shape (nc,) with AP50 values per class, or zeros if not available.
         """
-        return self.all_ap[:, 0] if len(self.all_ap) else []
+        if hasattr(self.all_ap, '__len__') and len(self.all_ap) and hasattr(self.all_ap, 'shape') and len(self.all_ap.shape) > 1:
+            return self.all_ap[:, 0]
+        return np.zeros(self.nc)
 
     @property
     def ap75(self):
@@ -675,9 +695,11 @@ class Metric(SimpleClass):
         Returns the Average Precision (AP) at an IoU threshold of 0.75 for all classes.
 
         Returns:
-            (np.ndarray, list): Array of shape (nc,) with AP75 values per class, or an empty list if not available.
+            (np.ndarray): Array of shape (nc,) with AP75 values per class, or zeros if not available.
         """
-        return self.all_ap[:, 5] if len(self.all_ap) else []
+        if hasattr(self.all_ap, '__len__') and len(self.all_ap) and hasattr(self.all_ap, 'shape') and len(self.all_ap.shape) > 1:
+            return self.all_ap[:, 5]
+        return np.zeros(self.nc)
 
     @property
     def ap(self):
@@ -685,9 +707,11 @@ class Metric(SimpleClass):
         Returns the Average Precision (AP) at an IoU threshold of 0.5-0.95 for all classes.
 
         Returns:
-            (np.ndarray, list): Array of shape (nc,) with AP50-95 values per class, or an empty list if not available.
+            (np.ndarray): Array of shape (nc,) with AP50-95 values per class, or zeros if not available.
         """
-        return self.all_ap.mean(1) if len(self.all_ap) else []
+        if hasattr(self.all_ap, '__len__') and len(self.all_ap) and hasattr(self.all_ap, 'shape') and len(self.all_ap.shape) > 1:
+            return self.all_ap.mean(1)
+        return np.zeros(self.nc)
 
     @property
     def mp(self):
@@ -697,7 +721,7 @@ class Metric(SimpleClass):
         Returns:
             (float): The mean precision of all classes.
         """
-        return self.p.mean() if len(self.p) else 0.0
+        return self.p.mean() if hasattr(self.p, '__len__') and len(self.p) else 0.0
 
     @property
     def mr(self):
@@ -707,7 +731,7 @@ class Metric(SimpleClass):
         Returns:
             (float): The mean recall of all classes.
         """
-        return self.r.mean() if len(self.r) else 0.0
+        return self.r.mean() if hasattr(self.r, '__len__') and len(self.r) else 0.0
 
     @property
     def map50(self):
@@ -717,7 +741,9 @@ class Metric(SimpleClass):
         Returns:
             (float): The mAP at an IoU threshold of 0.5.
         """
-        return self.all_ap[:, 0].mean() if len(self.all_ap) else 0.0
+        if hasattr(self.all_ap, '__len__') and len(self.all_ap) and hasattr(self.all_ap, 'shape') and len(self.all_ap.shape) > 1:
+            return self.all_ap[:, 0].mean()
+        return 0.0
 
     @property
     def map75(self):
@@ -727,7 +753,9 @@ class Metric(SimpleClass):
         Returns:
             (float): The mAP at an IoU threshold of 0.75.
         """
-        return self.all_ap[:, 5].mean() if len(self.all_ap) else 0.0
+        if hasattr(self.all_ap, '__len__') and len(self.all_ap) and hasattr(self.all_ap, 'shape') and len(self.all_ap.shape) > 1:
+            return self.all_ap[:, 5].mean()
+        return 0.0
 
     @property
     def map(self):
@@ -737,7 +765,9 @@ class Metric(SimpleClass):
         Returns:
             (float): The mAP over IoU thresholds of 0.5 - 0.95 in steps of 0.05.
         """
-        return self.all_ap.mean() if len(self.all_ap) else 0.0
+        if hasattr(self.all_ap, '__len__') and len(self.all_ap) and hasattr(self.all_ap, 'shape'):
+            return self.all_ap.mean()
+        return 0.0
 
     def mean_results(self):
         """Mean of results, return mp, mr, map50, map."""
@@ -745,14 +775,27 @@ class Metric(SimpleClass):
 
     def class_result(self, i):
         """Class-aware result, return p[i], r[i], ap50[i], ap[i]."""
-        return self.p[i], self.r[i], self.ap50[i], self.ap75[i], self.ap[i]
+        # Ensure arrays are accessible with bounds checking
+        try:
+            if (not hasattr(self.p, '__len__') or i >= len(self.p) or 
+                not hasattr(self.r, '__len__') or i >= len(self.r)):
+                return 0., 0., 0., 0., 0.  # Return zeros if index is out of bounds
+            
+            ap50 = self.ap50[i] if hasattr(self.ap50, '__len__') and i < len(self.ap50) else 0.0
+            ap75 = self.ap75[i] if hasattr(self.ap75, '__len__') and i < len(self.ap75) else 0.0
+            ap = self.ap[i] if hasattr(self.ap, '__len__') and i < len(self.ap) else 0.0
+            
+            return self.p[i], self.r[i], ap50, ap75, ap
+        except (IndexError, TypeError):
+            return 0., 0., 0., 0., 0.  # Return zeros on any error
 
     @property
     def maps(self):
         """MAP of each class."""
         maps = np.zeros(self.nc) + self.map
         for i, c in enumerate(self.ap_class_index):
-            maps[c] = self.ap[i]
+            if i < len(self.ap) and c < len(maps):  # Bounds checking
+                maps[c] = self.ap[i]
         return maps
 
     def fitness(self):

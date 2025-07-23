@@ -1,6 +1,7 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import json
+import random
 from collections import defaultdict
 from itertools import repeat
 from multiprocessing.pool import ThreadPool
@@ -13,7 +14,7 @@ from PIL import Image
 from torch.utils.data import ConcatDataset
 
 from ultralytics.utils import LOCAL_RANK, NUM_THREADS, TQDM, colorstr
-from ultralytics.utils.ops import resample_segments
+from ultralytics.utils.ops import resample_segments, xyxyxyxy2xywhr
 from ultralytics.utils.torch_utils import TORCHVISION_0_18
 
 from .augment import (
@@ -27,6 +28,7 @@ from .augment import (
     v8_transforms,
 )
 from .base import BaseDataset
+from .dataset import YOLODataset
 from .utils import (
     HELP_URL,
     get_hash,
@@ -42,7 +44,101 @@ from ultralytics.utils import LOGGER
 DATASET_CACHE_VERSION = "1.0.3"
 
 
-class TripleYOLODataset(BaseDataset):
+class TripleFormat(Format):
+    """
+    Format class for triple image datasets.
+    Handles conversion of triple image lists to tensors.
+    """
+    
+    def __call__(self, labels):
+        """
+        Formats image annotations for triple image object detection.
+        Handles the case where img is a list of 3 images.
+        """
+        img = labels.pop("img")
+        
+        # Extract height and width - handle both single image and triple image cases
+        if isinstance(img, list) and len(img) == 3:
+            h, w = img[0].shape[:2]  # Use first image for shape reference
+        else:
+            h, w = img.shape[:2]
+        
+        cls = labels.pop("cls")
+        instances = labels.pop("instances")
+        instances.convert_bbox(format=self.bbox_format)
+        instances.denormalize(w, h)
+        nl = len(instances)
+
+        if self.return_mask:
+            if nl:
+                masks, instances, cls = self._format_segments(instances, cls, w, h)
+                masks = torch.from_numpy(masks)
+            else:
+                # For triple images, use first image for mask dimensions
+                ref_img = img[0] if isinstance(img, list) else img
+                masks = torch.zeros(
+                    1 if self.mask_overlap else nl, ref_img.shape[0] // self.mask_ratio, ref_img.shape[1] // self.mask_ratio
+                )
+            labels["masks"] = masks
+            
+        labels["img"] = self._format_img(img)
+        labels["cls"] = torch.from_numpy(cls) if nl else torch.zeros(nl)
+        labels["bboxes"] = torch.from_numpy(instances.bboxes) if nl else torch.zeros((nl, 4))
+        
+        if self.return_keypoint:
+            labels["keypoints"] = torch.from_numpy(instances.keypoints)
+            if self.normalize:
+                labels["keypoints"][..., 0] /= w
+                labels["keypoints"][..., 1] /= h
+                
+        if self.return_obb:
+            labels["bboxes"] = (
+                xyxyxyxy2xywhr(torch.from_numpy(instances.segments)) if len(instances.segments) else torch.zeros((0, 5))
+            )
+            
+        # NOTE: need to normalize obb in xywhr format for width-height consistency
+        if self.normalize:
+            labels["bboxes"][:, [0, 2]] /= w
+            labels["bboxes"][:, [1, 3]] /= h
+            
+        # Then we can use collate_fn
+        if self.batch_idx:
+            labels["batch_idx"] = torch.zeros(nl)
+            
+        return labels
+    
+    def _format_img(self, img):
+        """
+        Formats triple images from list of Numpy arrays to a single PyTorch tensor.
+        
+        Args:
+            img: Either a single numpy array or list of 3 numpy arrays (triple images)
+            
+        Returns:
+            torch.Tensor: Formatted image tensor with shape (C*3, H, W) for triple images
+                         or (C, H, W) for single images
+        """
+        if isinstance(img, list) and len(img) == 3:
+            # Handle triple images
+            formatted_imgs = []
+            for single_img in img:
+                if len(single_img.shape) < 3:
+                    single_img = np.expand_dims(single_img, -1)
+                single_img = single_img.transpose(2, 0, 1)
+                single_img = np.ascontiguousarray(
+                    single_img[::-1] if random.uniform(0, 1) > self.bgr else single_img
+                )
+                formatted_imgs.append(single_img)
+            
+            # Concatenate along channel dimension (C*3, H, W)
+            img_tensor = torch.from_numpy(np.concatenate(formatted_imgs, axis=0))
+            return img_tensor
+        else:
+            # Handle single image (fallback to parent method)
+            return super()._format_img(img)
+
+
+class TripleYOLODataset(YOLODataset):
     """
     Dataset class for loading object detection with triple image inputs.
     
@@ -66,6 +162,12 @@ class TripleYOLODataset(BaseDataset):
         self.use_obb = task == "obb"
         self.data = data
         assert not (self.use_segments and self.use_keypoints), "Can not use both segments and keypoints."
+        
+        # Ensure data is passed correctly to parent class
+        if data is not None:
+            kwargs['data'] = data
+        kwargs['task'] = task
+        
         super().__init__(*args, **kwargs)
         
         # Set up paths for triple images
@@ -114,7 +216,10 @@ class TripleYOLODataset(BaseDataset):
                 else:
                     # Fallback: use the primary image if detail is missing
                     detail_file = primary_file
-                    LOGGER.warning(f"Detail image not found for {primary_file}, using primary image as fallback")
+                    # Log warning once for missing detail images
+                    if not hasattr(self, '_detail_warning_shown'):
+                        LOGGER.warning(f"Detail images not found, using primary images as fallback")
+                        self._detail_warning_shown = True
             
             detail_files.append(str(detail_file))
         
@@ -126,6 +231,12 @@ class TripleYOLODataset(BaseDataset):
         primary_path = self.primary_files[i]
         primary_img = cv2.imread(primary_path)
         
+        if primary_img is None:
+            raise FileNotFoundError(f"Primary image not found: {primary_path}")
+        
+        # Store original shape
+        ori_shape = primary_img.shape[:2]  # HW
+        
         # Load detail images
         detail1_path = self.detail1_files[i]
         detail2_path = self.detail2_files[i]
@@ -134,28 +245,27 @@ class TripleYOLODataset(BaseDataset):
         detail2_img = cv2.imread(detail2_path)
         
         # Ensure all images have the same size
-        if primary_img is not None:
-            h, w = primary_img.shape[:2]
+        h, w = primary_img.shape[:2]
+        
+        if detail1_img is not None:
+            detail1_img = cv2.resize(detail1_img, (w, h))
+        else:
+            detail1_img = primary_img.copy()
             
-            if detail1_img is not None:
-                detail1_img = cv2.resize(detail1_img, (w, h))
-            else:
-                detail1_img = primary_img.copy()
-                
-            if detail2_img is not None:
-                detail2_img = cv2.resize(detail2_img, (w, h))
-            else:
-                detail2_img = primary_img.copy()
+        if detail2_img is not None:
+            detail2_img = cv2.resize(detail2_img, (w, h))
+        else:
+            detail2_img = primary_img.copy()
         
         # Convert BGR to RGB
-        if primary_img is not None:
-            primary_img = cv2.cvtColor(primary_img, cv2.COLOR_BGR2RGB)
-        if detail1_img is not None:
-            detail1_img = cv2.cvtColor(detail1_img, cv2.COLOR_BGR2RGB)
-        if detail2_img is not None:
-            detail2_img = cv2.cvtColor(detail2_img, cv2.COLOR_BGR2RGB)
+        primary_img = cv2.cvtColor(primary_img, cv2.COLOR_BGR2RGB)
+        detail1_img = cv2.cvtColor(detail1_img, cv2.COLOR_BGR2RGB)  
+        detail2_img = cv2.cvtColor(detail2_img, cv2.COLOR_BGR2RGB)
         
-        return [primary_img, detail1_img, detail2_img]
+        triple_images = [primary_img, detail1_img, detail2_img]
+        resized_shape = ori_shape  # No resizing yet, will be done by transforms
+        
+        return triple_images, ori_shape, resized_shape
 
     def __getitem__(self, index):
         """Returns transformed triple image and target information at given index."""
@@ -163,13 +273,42 @@ class TripleYOLODataset(BaseDataset):
 
     def get_image_and_label(self, index):
         """Get triple images and labels."""
-        label = self.get_label_info(index)
-        label["img"] = self.load_image(index)
-        label["ratio_pad"] = (1.0, (0.0, 0.0))  # for evaluation
+        # Use base class approach for getting labels
+        from copy import deepcopy
+        label = deepcopy(self.labels[index])
+        label.pop("shape", None)  # shape is for rect, remove it
+        
+        # Load triple images instead of single image
+        label["img"], label["ori_shape"], label["resized_shape"] = self.load_image(index)
+        # Note: ratio_pad will be set correctly by TripleLetterBox in transforms
+        
         if self.rect:
             label["rect_shape"] = self.batch_shapes[self.batch[index]]
         label = self.update_labels_info(label)
         return label
+
+    def build_transforms(self, hyp=None):
+        """Builds transforms with TripleFormat for triple image datasets."""
+        # Use minimal transforms for triple images
+        # TODO: Implement triple-image-compatible augmentations
+        # Current augmentations (RandomHSV, RandomFlip, Albumentations, etc.) 
+        # expect single images, not lists of 3 images
+        transforms = Compose([TripleLetterBox(new_shape=(self.imgsz, self.imgsz), scaleup=False)])
+        
+        transforms.append(
+            TripleFormat(
+                bbox_format="xywh",
+                normalize=True,
+                return_mask=self.use_segments,
+                return_keypoint=self.use_keypoints,
+                return_obb=self.use_obb,
+                batch_idx=True,
+                mask_ratio=hyp.mask_ratio,
+                mask_overlap=hyp.overlap_mask,
+                bgr=0.0,  # Disable BGR flipping until triple-compatible version is implemented
+            )
+        )
+        return transforms
 
     def update_labels_info(self, label):
         """Custom transforms for triple image inputs."""
@@ -188,18 +327,33 @@ class TripleYOLODataset(BaseDataset):
         label["instances"] = Instances(bboxes, segments, keypoints, bbox_format=bbox_format, normalized=normalized)
         return label
 
-    def collate_fn(self, batch):
-        """Collate function for triple image batches."""
-        new_batch = []
-        for item in batch:
-            # Handle triple image inputs
-            if isinstance(item["img"], list) and len(item["img"]) == 3:
-                # Keep the structure for triple inputs
-                new_item = {key: value for key, value in item.items()}
-                new_batch.append(new_item)
-            else:
-                new_batch.append(item)
-        
+    @staticmethod
+    def collate_fn(batch):
+        """Collates data samples into batches for triple image datasets."""
+        new_batch = {}
+        keys = batch[0].keys()
+        values = list(zip(*[list(b.values()) for b in batch]))
+        for i, k in enumerate(keys):
+            value = values[i]
+            if k == "img":
+                # Handle both regular tensors and triple image tensors
+                try:
+                    value = torch.stack(value, 0)
+                except Exception as e:
+                    # Convert any remaining lists to tensors
+                    converted_value = []
+                    for v in value:
+                        if isinstance(v, list):
+                            raise ValueError("Images are still lists after formatting - check TripleFormat implementation")
+                        converted_value.append(v)
+                    value = torch.stack(converted_value, 0)
+            if k in {"masks", "keypoints", "bboxes", "cls", "segments", "obb"}:
+                value = torch.cat(value, 0)
+            new_batch[k] = value
+        new_batch["batch_idx"] = list(new_batch["batch_idx"])
+        for i in range(len(new_batch["batch_idx"])):
+            new_batch["batch_idx"][i] += i  # add target image index for build_targets()
+        new_batch["batch_idx"] = torch.cat(new_batch["batch_idx"], 0)
         return new_batch
 
 
@@ -305,4 +459,12 @@ class TripleLetterBox:
         labels["instances"].denormalize(*labels["img"][0].shape[:2][::-1])
         labels["instances"].scale(*ratio)
         labels["instances"].add_padding(padw, padh)
+        
+        # Set ratio_pad in the correct format for validation
+        # Format: (ratio_values, (pad_left, pad_top))
+        if labels.get("ratio_pad"):
+            labels["ratio_pad"] = (labels["ratio_pad"], (padw, padh))
+        else:
+            labels["ratio_pad"] = (ratio, (padw, padh))
+        
         return labels
