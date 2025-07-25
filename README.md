@@ -67,8 +67,12 @@ python unified_train_optimized.py --data datatrain.yaml --variant s --epochs 50 
 
 ### Step 3️⃣: Test Your Model
 ```bash
-# 🧪 Test on unseen test data (the gold standard!)
+# 🧪 Test on data specified in datatrain.yaml (respects your test split choice!)
 python test_model.py "runs/*/weights/best.pt"
+# 📁 Automatically uses whatever you set as 'test:' in datatrain.yaml:
+#     test: images/primary/test   → Uses dedicated test folder
+#     test: images/primary/train  → Uses train folder as test (current setup)
+#     test: images/primary/val    → Uses validation folder as test
 
 # 🎪 Run inference on new images
 python inference_optimized.py --model runs/*/weights/best.pt --source images/ --conf 0.01
@@ -77,6 +81,40 @@ python inference_optimized.py --model runs/*/weights/best.pt --source images/ --
 ---
 
 ## 📊 **Dataset Configuration Made Simple**
+
+### 🎯 **Flexible Test Folder Configuration**
+
+*All evaluation scripts automatically respect your `datatrain.yaml` test configuration:*
+
+```yaml
+# Example configurations - choose what works for your dataset:
+
+# 📁 Option 1: Dedicated test folder (ideal for large datasets)
+test: images/primary/test
+
+# 📁 Option 2: Use train folder as test (common for small datasets)
+test: images/primary/train
+
+# 📁 Option 3: Use validation folder as test  
+test: images/primary/val
+
+# 📁 Option 4: Custom test path
+test: custom/path/to/your/test/images
+```
+
+**💡 Why this flexibility matters:**
+- **Small datasets**: Often use train data for testing (your current setup)
+- **Large datasets**: Have dedicated test splits
+- **Research**: May want to test on validation data
+- **Custom workflows**: Need specific test paths
+
+**✅ All these scripts automatically adapt to your choice:**
+- `python test_model.py` - Uses your test split
+- `python evaluate_triple_model.py` - Uses your test split  
+- `python test_evaluation.py` - Uses your test split
+- `python test_confidence_thresholds.py` - Uses your test split
+
+---
 
 ### 🔵 **Single Mode** (Standard YOLO)
 *Perfect for getting started or when you only have one image per object*
@@ -100,10 +138,16 @@ names: {0: hole}  # Same object classes
 nc: 1             # Same number of classes  
 path: /path/to/my_dataset_4
 
-# 🎯 Primary images (the ones with labels)
+# 🎯 Flexible dataset splits - YOU choose what to use for testing!
 train: images/primary/train
 val: images/primary/val
-test: images/primary/test
+test: images/primary/test        # 📁 Use dedicated test folder
+# OR
+test: images/primary/train       # 📁 Use train folder as test (common for small datasets)
+# OR  
+test: images/primary/val         # 📁 Use validation folder as test
+# OR
+test: custom/path/to/test        # 📁 Use any custom path
 
 # 🚀 Triple magic configuration
 triple_input: true              # 🔥 This enables the triple mode!
@@ -210,9 +254,15 @@ python evaluate_triple_model.py runs/unified_train_triple/yolo_s_triple*/weights
 # 🔍 Auto-find latest model weights with custom thresholds
 python evaluate_triple_model.py "runs/*/weights/best.pt" datatrain.yaml 0.01 0.5
 
-# 📊 Generates full evaluation report with:
+# 📊 Automatically uses the test split specified in your datatrain.yaml:
+# • test: images/primary/test    → Uses dedicated test folder
+# • test: images/primary/train   → Uses train folder as test (your current setup)
+# • test: images/primary/val     → Uses validation folder as test
+# • test: custom/path           → Uses any custom path you specify
+
+# 📈 Generates full evaluation report with:
 # ✅ Precision, Recall, F1-Score, mAP@0.5 metrics
-# ✅ Confidence score and IoU distributions
+# ✅ Confidence score and IoU distributions  
 # ✅ Detection vs ground truth analysis
 # ✅ Professional charts and visualizations
 # ✅ JSON results for further analysis
