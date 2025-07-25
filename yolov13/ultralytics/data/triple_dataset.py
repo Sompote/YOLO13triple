@@ -145,10 +145,14 @@ class TripleYOLODataset(YOLODataset):
     Expected directory structure:
     dataset/
     ├── images/
-    │   ├── primary/     # Images with labels (first input)
-    │   ├── detail1/     # Additional detail images (second input)
-    │   └── detail2/     # Additional detail images (third input)
-    └── labels/          # Label files corresponding to primary images
+    │   ├── primary/     # Images with labels (first input) - REQUIRED
+    │   ├── detail1/     # Additional detail images (second input) - OPTIONAL
+    │   └── detail2/     # Additional detail images (third input) - OPTIONAL
+    └── labels/
+        └── primary/     # Label files for primary images ONLY - detail1/detail2 don't need labels
+    
+    Note: Only primary images require labels. Detail1 and detail2 images are additional
+    context inputs. If detail images are missing, primary images are used as fallback.
     
     Args:
         data (dict, optional): A dataset YAML dictionary. Defaults to None.
@@ -214,12 +218,8 @@ class TripleYOLODataset(YOLODataset):
                 if possible_files:
                     detail_file = possible_files[0]
                 else:
-                    # Fallback: use the primary image if detail is missing
+                    # Fallback: use the primary image if detail is missing (expected behavior)
                     detail_file = primary_file
-                    # Log warning once for missing detail images
-                    if not hasattr(self, '_detail_warning_shown'):
-                        LOGGER.warning(f"Detail images not found, using primary images as fallback")
-                        self._detail_warning_shown = True
             
             detail_files.append(str(detail_file))
         

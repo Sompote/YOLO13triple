@@ -1,9 +1,10 @@
 names:
-  0: person
+  0: hole
 nc: 1
-path: /Users/sompoteyouwai/env/yolo13_dual/yolo13_23_jul/my_dataset3
+path: /Users/sompoteyouwai/env/yolo13_dual/yolo13_25jul/my_dataset_4
 train: images/primary/train
-val: images/primary/train
+val: images/primary/val
+test: images/primary/train
 
 # Triple input configuration
 triple_input: true
