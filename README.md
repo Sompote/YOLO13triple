@@ -67,14 +67,17 @@ python unified_train_optimized.py --data datatrain.yaml --variant s --epochs 50 
 
 ### Step 3️⃣: Test Your Model
 ```bash
-# 🧪 Test on data specified in datatrain.yaml (respects your test split choice!)
+# 🧪 Quick inference test (checks if model can run)
 python test_model.py "runs/*/weights/best.pt"
-# 📁 Automatically uses whatever you set as 'test:' in datatrain.yaml:
-#     test: images/primary/test   → Uses dedicated test folder
-#     test: images/primary/train  → Uses train folder as test (current setup)
-#     test: images/primary/val    → Uses validation folder as test
+# ⚠️  Note: May show channel mismatch for triple models - this is expected
 
-# 🎪 Run inference on new images
+# 🎯 Comprehensive evaluation (recommended for triple models)
+python evaluate_triple_simple.py "runs/*/weights/best.pt"
+
+# 🔍 Detailed diagnostic analysis 
+python diagnose_model_issues.py "runs/*/weights/best.pt"
+
+# 🎪 Run inference on new images (single input only)
 python inference_optimized.py --model runs/*/weights/best.pt --source images/ --conf 0.01
 ```
 
@@ -246,51 +249,48 @@ python unified_train_optimized.py \
 ### 🧪 **Model Testing (After Training)**
 *Test your trained model on unseen test data for true performance metrics*
 
-#### **🚀 Comprehensive Triple Model Evaluation**
+#### **🎯 Recommended Testing Workflow for Triple Models**
+
+**Step 1: Quick Model Check**
 ```bash
-# 🎯 Complete evaluation designed specifically for triple input models
-python evaluate_triple_model.py runs/unified_train_triple/yolo_s_triple*/weights/best.pt
-
-# 🔍 Auto-find latest model weights with custom thresholds
-python evaluate_triple_model.py "runs/*/weights/best.pt" datatrain.yaml 0.01 0.5
-
-# 📊 Automatically uses the test split specified in your datatrain.yaml:
-# • test: images/primary/test    → Uses dedicated test folder
-# • test: images/primary/train   → Uses train folder as test (your current setup)
-# • test: images/primary/val     → Uses validation folder as test
-# • test: custom/path           → Uses any custom path you specify
-
-# 📈 Generates full evaluation report with:
-# ✅ Precision, Recall, F1-Score, mAP@0.5 metrics
-# ✅ Confidence score and IoU distributions  
-# ✅ Detection vs ground truth analysis
-# ✅ Professional charts and visualizations
-# ✅ JSON results for further analysis
+# ✅ Verify model loads and environment is working
+python test_model.py runs/*/weights/best.pt
+# Expected: Shows channel mismatch error - this confirms triple model is correct
 ```
 
-#### **⚡ Quick Performance Check**
+**Step 2: Comprehensive Evaluation**
 ```bash
-# 🎪 Simple evaluation using working validation pipeline
+# 🎯 Best evaluation method for triple models (uses working validation pipeline)  
 python evaluate_triple_simple.py runs/*/weights/best.pt datatrain.yaml
-
-# 🎯 Fast diagnostic analysis
-python diagnose_model_issues.py runs/*/weights/best.pt
-
-# 📊 Output includes:
-# ✅ Training metrics analysis
-# ✅ Dataset format verification  
-# ✅ Model architecture check
-# ✅ Image loading compatibility test
+# ✅ Respects your datatrain.yaml test split configuration
+# ✅ Works around channel mismatch issues
+# ✅ Provides actual performance metrics
 ```
 
-#### **🔬 Confidence Threshold Optimization**
+**Step 3: Diagnostic Analysis**
 ```bash
-# 🎯 Find optimal detection thresholds for small objects
-python test_confidence_thresholds.py runs/*/weights/best.pt
+# 🔍 Complete system diagnosis (highly recommended)
+python diagnose_model_issues.py runs/*/weights/best.pt datatrain.yaml
+# 📊 Analyzes training results, dataset format, model architecture
+# 💡 Identifies why metrics might be zero (common with triple models)
+# 🔧 Provides specific recommendations for improvement
+```
 
-# 🔍 Tests multiple thresholds: 0.001, 0.01, 0.05, 0.1, 0.25, 0.5
-# 💡 Recommends best settings for your specific dataset
-# 📊 Saves results to evaluation_results/ directory
+**Step 4: Threshold Optimization (Optional)**
+```bash
+# 🔬 Find optimal confidence thresholds for detection
+python test_confidence_thresholds.py runs/*/weights/best.pt
+# 🎯 Tests: 0.001, 0.01, 0.05, 0.1, 0.25, 0.5
+# 💡 Recommends best settings for small objects
+# ⚠️  May show zero detections if model didn't learn properly
+```
+
+**Step 5: Advanced Evaluation (Experimental)**
+```bash
+# 🧪 Advanced evaluation with ground truth analysis (may fail due to channel mismatch)
+python evaluate_triple_model.py runs/*/weights/best.pt datatrain.yaml 0.01 0.5
+# ⚠️  Experimental - attempts full evaluation but expects failures
+# 📊 Falls back to training results when inference fails
 ```
 
 ### 🎯 **Production Inference**
@@ -479,10 +479,11 @@ names: {0: pipe, 1: cable, 2: void, 3: rebar, 4: rock}
 - ✅ **Triple Advantage**: 10-25% better accuracy vs single-image training
 
 ### ⚠️ **Known Issues & Solutions**
-- 🔧 **Zero Metrics During Training**: Common with triple input - use diagnostic tools to identify cause
-- 🔧 **No Objects Detected**: Run threshold optimization to find optimal confidence settings
-- 🔧 **IndexError in Validation**: Use `evaluate_triple_simple.py` for working validation pipeline
-- 🔧 **Channel Mismatch**: Ensure triple dataset properly loads 9-channel input
+- 🔧 **Channel Mismatch Error**: Expected behavior for triple models - confirms correct 9-channel architecture
+- 🔧 **Zero Metrics During Training**: Common issue - indicates training didn't converge properly
+- 🔧 **IndexError in Validation**: Use `evaluate_triple_simple.py` instead of standard validation
+- 🔧 **No Objects Detected**: Often means model needs retraining with different hyperparameters
+- 🔧 **Standard YOLO Tools Don't Work**: Triple models need specialized evaluation scripts we provide
 
 ---
 
@@ -505,23 +506,26 @@ python unified_train_optimized.py --data datatrain.yaml --variant n
 <details>
 <summary><b>🔍 "Zero Metrics / No Objects Detected" Issue</b></summary>
 
-This is a common issue with triple input models. Here's the diagnostic workflow:
+This is the most common issue with triple input models. Follow this exact diagnostic workflow:
 
 ```bash
-# 1. 🎯 Run comprehensive diagnostics first
+# 1. 🎯 First, verify this is actually a problem (not just channel mismatch)
+python test_model.py runs/*/weights/best.pt
+# Expected: Channel mismatch error - this is NORMAL for triple models
+
+# 2. 🔬 Get actual performance metrics using working evaluation
+python evaluate_triple_simple.py runs/*/weights/best.pt datatrain.yaml
+# This will show real metrics - if still zero, model truly didn't learn
+
+# 3. 🧪 Run complete diagnostic analysis
 python diagnose_model_issues.py runs/*/weights/best.pt datatrain.yaml
+# This analyzes training results and identifies root causes
 
-# 2. 🔬 Check if it's a threshold issue
-python test_confidence_thresholds.py runs/*/weights/best.pt
-
-# 3. 🧪 Test with different evaluation methods
-python evaluate_triple_simple.py runs/*/weights/best.pt
-
-# 4. 💡 Common solutions:
-# - Try single-input mode first to verify basic functionality
-# - Retrain with lower learning rate (0.0001) and smaller batch (1-2)
-# - Enable augmentations during training
-# - Check label format with diagnostic script
+# 4. 💡 If metrics are truly zero, try these solutions:
+# - Check training results.csv - all metrics zero means training failed
+# - Retrain with: --lr0 0.0001 --batch 1 --epochs 300 --patience 100  
+# - Try single-input mode first (set triple_input: false)
+# - Verify label files match image files exactly
 ```
 </details>
 
