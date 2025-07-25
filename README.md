@@ -14,8 +14,6 @@
 **Department of Civil Engineering**  
 **King Mongkut's University of Technology Thonburi (KMUTT)**
 
-![Triple Input Demo](https://via.placeholder.com/800x200/2E86AB/FFFFFF?text=Primary+%2B+Detail1+%2B+Detail2+%3D+Enhanced+Detection)
-
 </div>
 
 ---
