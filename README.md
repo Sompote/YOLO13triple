@@ -65,20 +65,21 @@ python unified_train_optimized.py --data datatrain.yaml --variant s --epochs 50 
 # 🔍 Watch the magic happen - loss decreases with 3x visual data!
 ```
 
-### Step 3️⃣: Test Your Model
+### Step 3️⃣: Evaluate Your Model
 ```bash
-# 🧪 Quick inference test (checks if model can run)
-python test_model.py "runs/*/weights/best.pt"
-# ⚠️  Note: May show channel mismatch for triple models - this is expected
-
-# 🎯 Comprehensive evaluation (recommended for triple models)
+# 🎯 RECOMMENDED: Use the working evaluation method for triple models
 python evaluate_triple_simple.py "runs/*/weights/best.pt"
+# ✅ This works with both single and triple input models
+# ✅ Uses your datatrain.yaml test configuration automatically
 
-# 🔍 Detailed diagnostic analysis 
+# 🔍 DIAGNOSTIC: Analyze training and model issues  
 python diagnose_model_issues.py "runs/*/weights/best.pt"
+# 📊 Shows why metrics might be zero (common with triple models)
+# 💡 Provides specific recommendations for improvement
 
-# 🎪 Run inference on new images (single input only)
-python inference_optimized.py --model runs/*/weights/best.pt --source images/ --conf 0.01
+# ⚠️  ADVANCED: Quick test (may show channel mismatch - this is normal)
+python test_model.py "runs/*/weights/best.pt"
+# 🔧 Use this only to verify model loads correctly
 ```
 
 ---
